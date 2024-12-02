@@ -1,4 +1,3 @@
-
 from flask import Flask, render_template, request, send_file, jsonify
 import pandas as pd
 import gdown
@@ -22,7 +21,13 @@ df = get_excel_from_google_drive()
 
 class PDF(FPDF):
     def __init__(self):
-        super().__init__ANDO DA AERONÁUTICA", ln=True, align="C")
+        super().__init__('P', 'mm', 'A4')  # Orientação retrato, milímetros, formato A4
+
+    def header(self):
+        # Cabeçalho centralizado
+        self.set_font("Arial", "B", 12)
+        self.cell(0, 6, "MINISTÉRIO DA DEFESA", ln=True, align="C")
+        self.cell(0, 6, "COMANDO DA AERONÁUTICA", ln=True, align="C")
         self.cell(0, 6, "GRUPAMENTO DE APOIO DE LAGOA SANTA", ln=True, align="C")
         self.cell(0, 8, "GUIA DE MOVIMENTAÇÃO DE BEM MÓVEL PERMANENTE ENTRE AS SEÇÕES DO GAPLS", ln=True, align="C")
         self.ln(10)
@@ -40,8 +45,9 @@ class PDF(FPDF):
         return text
 
     def add_table(self, dados_bmps):
-        col_widths = [15, 60, 20, 33, 33, 33]
-        headers = ["Nº BMP", "Nomenclatura", "Qtde", "Valor Atualizado", "Qtde a Movimentar", "Valor a Movimentar"]
+        # Define largura das colunas e título da tabela
+        col_widths = [25, 70, 55, 35]
+        headers = ["Nº BMP", "Nomenclatura", "Nº Série", "Valor Atualizado"]
 
         # Adicionar cabeçalho da tabela
         self.set_font("Arial", "B", 10)
@@ -49,7 +55,7 @@ class PDF(FPDF):
             self.cell(width, 10, header, border=1, align="C")
         self.ln()
 
-        # Adicionar as linhas da tabela
+        # Adiciona as linhas da tabela
         self.set_font("Arial", size=10)
         for _, row in dados_bmps.iterrows():
             # Calcular a altura necessária para a célula "Nomenclatura"
@@ -66,7 +72,6 @@ class PDF(FPDF):
             self.cell(col_widths[2], row_height, self.fix_text(row["Nº SERIE"]), border=1, align="C")
             self.cell(col_widths[3], row_height, f"R$ {row['VL. ATUALIZ.']:.2f}".replace('.', ','), border=1, align="R")
             self.ln()
-
 
     def add_details(self, secao_destino, chefia_origem, secao_origem, chefia_destino):
         text = f"""
@@ -98,7 +103,7 @@ LUCIANA DO AMARAL CORREA  Cel Int
 Dirigente Máximo
 """
         self.multi_cell(0, 8, self.fix_text(text))
-
+            
 @app.route("/", methods=["GET", "POST"])
 def index():
     secoes_origem = df['Seção de Origem'].dropna().unique().tolist()
@@ -110,12 +115,6 @@ def index():
         secao_destino = request.form.get("secao_destino")
         chefia_origem = request.form.get("chefia_origem")
         chefia_destino = request.form.get("chefia_destino")
-
-        quantidades_movimentadas = {}
-        for key, value in request.form.items():
-            if key.startswith("quantidade_"):
-                bmp_key = key.split("_")[1]
-                quantidades_movimentadas[bmp_key] = float(value) if value.strip() else 0
 
         if not (bmp_numbers and secao_origem and secao_destino and chefia_origem and chefia_destino):
             return render_template(
@@ -134,15 +133,6 @@ def index():
                 secoes_destino=secoes_destino,
                 error="Nenhum BMP encontrado para os números fornecidos.",
             )
-
-        if not dados_bmps["CONTA"].eq("87 - MATERIAL DE CONSUMO DE USO DURADOURO").all():
-            return render_template(
-                "index.html",
-                secoes_origem=secoes_origem,
-                secoes_destino=secoes_destino,
-                error="Estes itens não pertencem à conta '87 - MATERIAL DE CONSUMO DE USO DURADOURO'."
-            )
-
         pdf = PDF()
         pdf.add_page()
         pdf.add_table(dados_bmps)
@@ -166,7 +156,10 @@ def autocomplete():
 
     response = {}
     for bmp in bmp_numbers:
+        # Aqui você deve implementar a lógica para buscar a seção e chefia para o BMP
+        # Supondo que você tenha um DataFrame `df` com essas informações:
         filtro_bmp = df[df["Nº BMP"].astype(str) == bmp]
+
         if not filtro_bmp.empty:
             secao_origem = filtro_bmp["Seção de Origem"].values[0]
             chefia_origem = filtro_bmp["Chefia de Origem"].values[0]
@@ -187,12 +180,12 @@ def get_chefia():
 
     if tipo == "destino":
         chefia = df[df['Seção de Destino'] == secao]['Chefia de Destino'].dropna().unique()
-    elif tipo == "origem":
-        chefia = df[df['Seção de Origem'] == secao]['Chefia de Origem'].dropna().unique()
+        if chefia:
+            return jsonify({"chefia": chefia[0]})  # Retorna a chefia de destino
+        else:
+            return jsonify({"chefia": ""})  # Caso não haja chefia de destino
     else:
-        return jsonify({"error": "Tipo inválido!"}), 400
-
-    return jsonify({"chefia": chefia.tolist()})
+        return jsonify({"error": "Tipo inválido"}), 400
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))  # Lê a variável PORT ou usa 5000 como padrão
     app.run(host="0.0.0.0", port=port)
